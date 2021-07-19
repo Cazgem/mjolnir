@@ -1,21 +1,22 @@
 #!/bin/bash
+#
+#######################
 #					  #
+#	  DIVISI LABS	  #
 #	MJOLNIR v 1.0.3	  #
-#					  $
+#					  #
+#######################
+#
 # This script is used for create virtual hosts on Apache2.
 # Created by Cazgem from https://cazgem.com
 # Feel free to modify it
-#   PARAMETERS
-#
-# $URL/$1       - Url (example.com)
-# $DIR          - directory of web files
-# $DIR          - directory of web files
 #
 # EXAMPLE USAGE
 # sudo bash mjolnir cazgem.com -FC
 #
 #
 #
+### PARAMETERS ###
 WEBDIR="/srv/www" 							#This Should be the location where you want your website directories to live
 APACHE="/etc/apache2"						#This is your Apache2 Directory (purely  future-proofing)
 AVAILABLE="$APACHE/sites-available"
