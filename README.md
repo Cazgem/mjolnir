@@ -1,4 +1,4 @@
-# Mjolnir
+# Mjolnir 1.0.3
 
 ```javascript
 sudo bash mjolnir example.com -FC
