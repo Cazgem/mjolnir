@@ -17,13 +17,13 @@
 #
 #
 ### PARAMETERS ###
-WEBDIR="/srv/www" 							#This Should be the location where you want your website directories to live
-APACHE="/etc/apache2"						#This is your Apache2 Directory (purely  future-proofing)
+WEBDIR="/srv/www" 							# This Should be the location where you want your website directories to live
+APACHE="/etc/apache2"						# This is your Apache2 Directory (purely  future-proofing)
 AVAILABLE="$APACHE/sites-available"
 ENABLED="$APACHE/sites-enabled"
-EMAIL="webmaster@divisilabs.com"			#Master Administrator Email for your LAMP stack (will add option in the future for customizing this per site)
-URL=$1										#example.com, mysite.org, derp.net - you get the idea.....
-DEV="dev.$URL"								#Dev version of the site
+EMAIL="webmaster@divisilabs.com"			# Master Administrator Email for your LAMP stack (will add option in the future for customizing this per site)
+URL=$1										# example.com, mysite.org, derp.net - you get the idea.....
+DEV="dev.$URL"								# Dev version of the site
 WEBSITENAME=${URL%.*}
 EXT=${URL#*.}
 
