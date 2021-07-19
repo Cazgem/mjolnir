@@ -9,7 +9,7 @@
 #
 # This script is used for create virtual hosts on Apache2.
 # Created by Cazgem from https://cazgem.com
-# Feel free to modify it
+# Feel free to modify it and Contribute at https://github.com/Cazgem/mjolnir
 #
 # EXAMPLE USAGE
 # sudo bash mjolnir cazgem.com -FC
