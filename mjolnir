@@ -42,8 +42,6 @@ create_wwwdev(){
 	chmod -R 755 $WEBDIR/$URL
 }
 create_index(){
-	#echo "<?php // ini_set('display_errors',3);?>" >> /srv/www/$URL/html/index.php
-	#echo "<?php \$uid='USERID';?>" >> /srv/www/$URL/html/index.php
 	echo "<?php include ('/srv/lib/polyphony/init.php');?>" >> $WEBDIR/$URL/html/index.php
 }
 
