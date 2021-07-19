@@ -1,5 +1,7 @@
 #!/bin/bash
-#
+#					  #
+#	MJOLNIR v 1.0.3	  #
+#					  $
 # This script is used for create virtual hosts on Apache2.
 # Created by Cazgem from https://cazgem.com
 # Feel free to modify it
@@ -14,15 +16,17 @@
 #
 #
 #
-WEBDIR="/srv/www"
-AVAILABLE="/etc/apache2/sites-available"
-ENABLED="/etc/apache2/sites-enabled"
-EMAIL="webmaster@divisilabs.com"
-URL=$1
-DEV="dev.$URL"
+WEBDIR="/srv/www" 							#This Should be the location where you want your website directories to live
+APACHE="/etc/apache2"						#This is your Apache2 Directory (purely  future-proofing)
+AVAILABLE="$APACHE/sites-available"
+ENABLED="$APACHE/sites-enabled"
+EMAIL="webmaster@divisilabs.com"			#Master Administrator Email for your LAMP stack (will add option in the future for customizing this per site)
+URL=$1										#example.com, mysite.org, derp.net - you get the idea.....
+DEV="dev.$URL"								#Dev version of the site
 WEBSITENAME=${URL%.*}
 EXT=${URL#*.}
 
+### FUNCTIONS ###
 create_www(){
 	mkdir -p $WEBDIR/$URL/html
 	mkdir -p $WEBDIR/$URL/dev
@@ -258,6 +262,8 @@ full_suite_certbot(){
 	echo "Finishing Up ..."
 	echo "Success!  The $URL server block is now running with an SSL certificate!";
 }
+
+### LOGIC ###
 case "$2" in
 	-A) create_www;create_assets_dirs ;;
 	-C) certbot ;;
@@ -272,6 +278,7 @@ case "$2" in
 	-V) create_virtual_host ;;
 	*)
 		echo "Usage: sudo bash mjolnir <URL> <Options>
-[-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R/-D] Remove Site";exit;;
+[-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R/-D] Remove Site"; #TO-DO: Flesh This Out
+	exit;;
 esac
-exit 0
+exit 0		#Posterity
