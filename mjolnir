@@ -1,4 +1,5 @@
 #!/bin/bash
+#
 # This script is used for create virtual hosts on Apache2.
 # Created by Cazgem from https://cazgem.com
 # Feel free to modify it
@@ -7,16 +8,10 @@
 # $URL/$1       - Url (example.com)
 # $DIR          - directory of web files
 # $DIR          - directory of web files
+#
 # EXAMPLE USAGE
 # sudo bash mjolnir cazgem.com -FC
 #
-#
-# Check if you execute the script as root user
-#
-# This will check if directory already exist then create it with path : /directory/you/choose/domain.com
-# Set the ownership, permissions and create a test index.php file
-# Create a vhost file domain in your /etc/httpd/conf.d/ directory.
-# And add the new vhost to the hosts.
 #
 #
 WEBDIR="/srv/www"
