@@ -1,0 +1,284 @@
+#!/bin/bash
+# This script is used for create virtual hosts on Apache2.
+# Created by Cazgem from https://cazgem.com
+# Feel free to modify it
+#   PARAMETERS
+#
+# $URL/$1       - Url (example.com)
+# $DIR          - directory of web files
+# $DIR          - directory of web files
+# EXAMPLE USAGE
+# sudo bash mjolnir cazgem.com -FC
+#
+#
+# Check if you execute the script as root user
+#
+# This will check if directory already exist then create it with path : /directory/you/choose/domain.com
+# Set the ownership, permissions and create a test index.php file
+# Create a vhost file domain in your /etc/httpd/conf.d/ directory.
+# And add the new vhost to the hosts.
+#
+#
+WEBDIR="/srv/www"
+AVAILABLE="/etc/apache2/sites-available"
+ENABLED="/etc/apache2/sites-enabled"
+EMAIL="webmaster@divisilabs.com"
+URL=$1
+DEV="dev.$URL"
+WEBSITENAME=${URL%.*}
+EXT=${URL#*.}
+
+create_www(){
+	mkdir -p $WEBDIR/$URL/html
+	mkdir -p $WEBDIR/$URL/dev
+	mkdir -p $WEBDIR/errors/$URL
+	mkdir -p $WEBDIR/access/$URL
+
+	chown -R $USER:$USER $WEBDIR/$URL/html
+	chown -R $USER:$USER $WEBDIR/$URL/dev
+
+	chmod -R 755 $WEBDIR/$URL
+}
+
+create_wwwdev(){
+	mkdir -p $WEBDIR/$URL/dev
+	chown -R $USER:$USER $WEBDIR/$URL/dev
+
+	chmod -R 755 $WEBDIR/$URL
+}
+create_index(){
+	#echo "<?php // ini_set('display_errors',3);?>" >> /srv/www/$URL/html/index.php
+	#echo "<?php \$uid='USERID';?>" >> /srv/www/$URL/html/index.php
+	echo "<?php include ('/srv/lib/polyphony/init.php');?>" >> $WEBDIR/$URL/html/index.php
+}
+
+splice_from_root_www(){
+	echo "#### $URL ####
+<VirtualHost *:80>
+	ServerName $1
+	DocumentRoot $WEBDIR/$1/html
+	ServerAdmin $EMAIL
+	ServerAlias $1
+	ErrorLog $WEBDIR/$1/error.log
+	CustomLog $WEBDIR/$1/access.log combined
+</VirtualHost>
+
+<VirtualHost *:80>
+	DocumentRoot $WEBDIR/$1/html
+	ServerAdmin $EMAIL
+	ServerName $1
+	ServerAlias *.$1
+	ErrorLog $WEBDIR/$1/error.log
+	CustomLog $WEBDIR/$1/access.log combined
+</VirtualHost>" >> $AVAILABLE/$1.conf
+	sudo a2ensite $1.conf
+}
+
+splice_dev_from_root_www(){
+	echo "#### $URL ####
+<VirtualHost *:80>
+	ServerName dev.$URL
+	DocumentRoot /srv/www/$URL/dev
+	ServerAdmin $EMAIL
+	ServerAlias dev.$URL
+	ErrorLog /srv/www/$URL/error.log
+	CustomLog /srv/www/$URL/access.log combined
+</VirtualHost>" >> $AVAILABLE/$1.conf
+	sudo a2ensite $1.conf
+}
+
+restart_apache(){
+	echo ""
+	echo "------ Stability Test ------"
+	sudo apache2ctl configtest
+	echo ""
+	echo "Restarting Apache2....."
+	sudo systemctl restart apache2
+}
+
+configtest(){
+	var=$(apache2ctl configtest 2>&1)
+	echo $var
+}
+
+create_htaccess(){
+	echo "
+#Force non.www:
+RewriteEngine on
+RewriteCond %{HTTP_HOST} ^www\.$WEBSITENAME\.$EXT [NC]
+RewriteRule ^(.*)$ https://$URL/$1 [L,R=301]
+
+Options -MultiViews
+<IfModule mod_rewrite.c>
+	#polyphony rewrite
+	RewriteEngine On
+	RewriteBase /
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule . /index.php [L,NC,QSA]
+	#### kill fbclid ####
+	RewriteCond %{QUERY_STRING} ^(.*)&?fbclid=[^&]+&?(.*)$ [NC]
+	RewriteRule ^(.*)$ /$1?%1%2 [R=302,L]
+</IfModule>" >> $WEBDIR/$URL/html/.htaccess
+}
+
+create_htaccess_dev(){
+	echo "
+#Force non.www:
+RewriteEngine on
+RewriteCond %{HTTP_HOST} ^www\.dev.$WEBSITENAME\.$EXT [NC]
+RewriteRule ^(.*)$ https://dev.$URL/$1 [L,R=301]
+
+Options -MultiViews
+<IfModule mod_rewrite.c>
+	#polyphony rewrite
+	RewriteEngine On
+	RewriteBase /
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule . /index.php [L,NC,QSA]
+	#kill fbclid
+	RewriteCond %{QUERY_STRING} ^(.*)&?fbclid=[^&]+&?(.*)$ [NC]
+	RewriteRule ^(.*)$ /$1?%1%2 [R=302,L]
+</IfModule>" >> $WEBDIR/$URL/dev/.htaccess
+}
+
+create_assets_dirs(){
+	mkdir $WEBDIR/$URL/html/assets $WEBDIR/$URL/html/assets/css $WEBDIR/$URL/html/assets/docs $WEBDIR/$URL/html/assets/fonts $WEBDIR/$URL/html/assets/includes $WEBDIR/$URL/html/assets/js $WEBDIR/$URL/html/assets/pics $WEBDIR/$URL/html/assets/scripts $WEBDIR/$URL/html/assets/templates
+}
+
+finish_work(){
+	echo "Success!  The $URL server block is now running!"
+	echo "Remember to run the below command for SSL certification:"
+	echo "sudo certbot -d $URL -d www.$URL -d dev.$URL"
+}
+certbot(){
+	echo "
+	Getting SSL Certificate via Certbot"
+	sudo certbot -d $URL -d www.$URL -d $DEV 
+}
+certbot_dev(){
+	echo "
+	Getting SSL Certificate via Certbot"
+	sudo certbot -d $DEV 
+}
+create_dev(){
+	cp -r $WEBDIR/$URL/html/* $WEBDIR/$URL/dev
+}
+remove_www(){
+	sudo rm -rf $WEBDIR/$URL/
+	echo "Removed $URL directory"
+}
+
+remove_conf(){
+	sudo rm -rf $ENABLED/$URL.conf
+	sudo rm -rf $AVAILABLE/$URL.conf
+	echo "Removed $URL.conf"
+	sudo rm -rf $ENABLED/$DEV.conf
+	sudo rm -rf $AVAILABLE/$DEV.conf
+	echo "Removed $DEV.conf"
+	sudo rm -rf $ENABLED/$URL-le-ssl.conf
+	sudo rm -rf $AVAILABLE/$URL-le-ssl.conf
+	echo "Removed $URL-le-ssl.conf"
+	sudo rm -rf $ENABLED/$DEV-le-ssl.conf
+	sudo rm -rf $AVAILABLE/$DEV-le-ssl.conf
+	echo "Removed $DEV-le-ssl.conf"
+}
+
+disable_site(){
+	echo "Disabling Website....."
+	sudo a2dissite $URL
+	sudo a2dissite $DEV
+}
+
+finish_removal(){
+	echo "Success!  The $URL server block is now removed!"
+}
+create_devsite(){
+	echo "Creating Dev Directory..."
+	create_wwwdev
+	create_dev
+	splice_dev_from_root_www "dev.$URL"
+	create_htaccess_dev
+	chown -R $USER:$USER $WEBDIR/$URL/dev
+
+	chmod -R 755 $WEBDIR/$URL
+	certbot_dev
+}
+complete_job(){
+	echo "Job Done!"
+}
+remove_website(){
+	read -p "Are You Sure You Want to Delete $1? [Y/N]" confirm
+	case "$confirm" in
+	Y | y)
+	echo "Removing $1 ...";
+	disable_site;
+	restart_apache;
+	remove_www;
+	remove_conf;
+	finish_removal;
+	;;
+	N | n)
+	;;
+	*)
+	remove_website $1;
+	;;
+	esac
+
+}
+create_virtual_host(){
+	echo "Creating Virtual Hosts..."
+	sudo rm $ENABLED/$URL.conf
+	sudo rm $AVAILABLE/$URL.conf
+	echo "Removed $URL.conf"
+	splice_from_root_www "$URL";
+	splice_dev_from_root_www "$DEV";
+	disable_site;
+	complete_job;
+}
+full_suite(){
+	echo "--------- Creating Website $URL ---------"
+	create_www;
+	echo "Creating $URL homepage ..."
+	create_index;
+	echo "Splicing $URL from root www ..."
+	splice_from_root_www "$URL";
+	splice_dev_from_root_www "$DEV";
+	restart_apache;
+	echo "Creating Assets Directories ..."
+	create_assets_dirs;
+	echo "Initializing .htaccess ..."
+	create_htaccess;
+	create_htaccess_dev;
+	echo "Creating Dev ..."
+	create_dev;
+	echo "Finishing Up ..."
+	echo "Success!  The $URL server block is now running!
+Remember to run the below command for SSL certification:
+sudo certbot -d $URL -d www.$URL -d dev.$URL"
+}
+full_suite_certbot(){
+	full_suite;
+	echo "Running Certbot ..."
+	certbot;
+	echo "Finishing Up ..."
+	echo "Success!  The $URL server block is now running with an SSL certificate!";
+}
+case "$2" in
+	-A) create_www;create_assets_dirs ;;
+	-C) certbot ;;
+	-configtest) configtest ;;
+	-D) create_devsite;complete_job ;;
+	-F) full_suite ;;
+	-FC) full_suite_certbot ;;
+	-H) echo "Creating .htaccess for $URL ...";create_htaccess ;;
+	-I) create_index ;;
+	-R) remove_website $URL;;
+	-SSL) certbot ;;
+	-V) create_virtual_host ;;
+	*)
+		echo "Usage: sudo bash mjolnir <URL> <Options>
+[-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R/-D] Remove Site";exit;;
+esac
+exit 0
