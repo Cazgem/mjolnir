@@ -12,7 +12,7 @@
 # Feel free to modify it and Contribute at https://github.com/Cazgem/mjolnir
 #
 # EXAMPLE USAGE
-# sudo bash mjolnir cazgem.com -FC
+# sudo mjolnir cazgem.com -FC
 #
 #
 #
@@ -26,25 +26,26 @@ URL=$1										# example.com, mysite.org, derp.net - you get the idea.....
 DEV="dev.$URL"								# Dev version of the site
 WEBSITENAME=${URL%.*}
 EXT=${URL#*.}
-
+LOGSDIR="/etc/mjolnir/logs"
+_DATE=`date +%m-%d-%Y`
 ### FUNCTIONS ###
 create_www(){
-	mkdir -p $WEBDIR/$URL/html
-	mkdir -p $WEBDIR/$URL/dev
-	mkdir -p $WEBDIR/errors/$URL
-	mkdir -p $WEBDIR/access/$URL
+	sudo mkdir -p $WEBDIR/$URL/html
+	sudo mkdir -p $WEBDIR/$URL/dev
+	sudo mkdir -p $WEBDIR/errors/$URL
+	sudo mkdir -p $WEBDIR/access/$URL
 
-	chown -R $USER:$USER $WEBDIR/$URL/html
-	chown -R $USER:$USER $WEBDIR/$URL/dev
+	sudo chown -R $USER:$USER $WEBDIR/$URL/html
+	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
 
-	chmod -R 755 $WEBDIR/$URL
+	sudo chmod -R 755 $WEBDIR/$URL
 }
 
 create_wwwdev(){
-	mkdir -p $WEBDIR/$URL/dev
-	chown -R $USER:$USER $WEBDIR/$URL/dev
+	sudo mkdir -p $WEBDIR/$URL/dev
+	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
 
-	chmod -R 755 $WEBDIR/$URL
+	sudo chmod -R 755 $WEBDIR/$URL
 }
 create_index(){
 	echo "<?php include ('/srv/lib/polyphony/init.php');?>" >> $WEBDIR/$URL/html/index.php
@@ -69,7 +70,7 @@ splice_from_root_www(){
 	ErrorLog $WEBDIR/$1/error.log
 	CustomLog $WEBDIR/$1/access.log combined
 </VirtualHost>" >> $AVAILABLE/$1.conf
-	sudo a2ensite $1.conf
+	a2ensite $1.conf
 }
 
 splice_dev_from_root_www(){
@@ -114,12 +115,20 @@ Options -MultiViews
 	RewriteCond %{REQUEST_FILENAME} !-f
 	RewriteCond %{REQUEST_FILENAME} !-d
 	RewriteRule . /index.php [L,NC,QSA]
-	#### kill fbclid ####
-	RewriteCond %{QUERY_STRING} ^(.*)&?fbclid=[^&]+&?(.*)$ [NC]
-	RewriteRule ^(.*)$ /$1?%1%2 [R=302,L]
 </IfModule>" >> $WEBDIR/$URL/html/.htaccess
 }
 
+set_permissions() {
+	
+
+	sudo chown -R $USER:$USER $WEBDIR/$URL/html
+	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
+
+	sudo chmod -R 755 $WEBDIR/$URL
+
+	sudo chmod -R 755 $WEBDIR/$URL
+	
+}
 create_htaccess_dev(){
 	echo "
 #Force non.www:
@@ -135,9 +144,6 @@ Options -MultiViews
 	RewriteCond %{REQUEST_FILENAME} !-f
 	RewriteCond %{REQUEST_FILENAME} !-d
 	RewriteRule . /index.php [L,NC,QSA]
-	#kill fbclid
-	RewriteCond %{QUERY_STRING} ^(.*)&?fbclid=[^&]+&?(.*)$ [NC]
-	RewriteRule ^(.*)$ /$1?%1%2 [R=302,L]
 </IfModule>" >> $WEBDIR/$URL/dev/.htaccess
 }
 
@@ -148,7 +154,7 @@ create_assets_dirs(){
 finish_work(){
 	echo "Success!  The $URL server block is now running!"
 	echo "Remember to run the below command for SSL certification:"
-	echo "sudo certbot -d $URL -d www.$URL -d dev.$URL"
+	echo "certbot -d $URL -d www.$URL -d dev.$URL"
 }
 certbot(){
 	echo "
@@ -164,29 +170,29 @@ create_dev(){
 	cp -r $WEBDIR/$URL/html/* $WEBDIR/$URL/dev
 }
 remove_www(){
-	sudo rm -rf $WEBDIR/$URL/
+	rm -rf $WEBDIR/$URL/
 	echo "Removed $URL directory"
 }
 
 remove_conf(){
-	sudo rm -rf $ENABLED/$URL.conf
-	sudo rm -rf $AVAILABLE/$URL.conf
+	rm -rf $ENABLED/$URL.conf
+	rm -rf $AVAILABLE/$URL.conf
 	echo "Removed $URL.conf"
-	sudo rm -rf $ENABLED/$DEV.conf
-	sudo rm -rf $AVAILABLE/$DEV.conf
+	rm -rf $ENABLED/$DEV.conf
+	rm -rf $AVAILABLE/$DEV.conf
 	echo "Removed $DEV.conf"
-	sudo rm -rf $ENABLED/$URL-le-ssl.conf
-	sudo rm -rf $AVAILABLE/$URL-le-ssl.conf
+	rm -rf $ENABLED/$URL-le-ssl.conf
+	rm -rf $AVAILABLE/$URL-le-ssl.conf
 	echo "Removed $URL-le-ssl.conf"
-	sudo rm -rf $ENABLED/$DEV-le-ssl.conf
-	sudo rm -rf $AVAILABLE/$DEV-le-ssl.conf
+	rm -rf $ENABLED/$DEV-le-ssl.conf
+	rm -rf $AVAILABLE/$DEV-le-ssl.conf
 	echo "Removed $DEV-le-ssl.conf"
 }
 
 disable_site(){
 	echo "Disabling Website....."
-	sudo a2dissite $URL
-	sudo a2dissite $DEV
+	a2dissite $URL
+	a2dissite $DEV
 }
 
 finish_removal(){
@@ -198,9 +204,9 @@ create_devsite(){
 	create_dev
 	splice_dev_from_root_www "dev.$URL"
 	create_htaccess_dev
-	chown -R $USER:$USER $WEBDIR/$URL/dev
+	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
 
-	chmod -R 755 $WEBDIR/$URL
+	sudo chmod -R 755 $WEBDIR/$URL
 	certbot_dev
 }
 complete_job(){
@@ -227,8 +233,8 @@ remove_website(){
 }
 create_virtual_host(){
 	echo "Creating Virtual Hosts..."
-	sudo rm $ENABLED/$URL.conf
-	sudo rm $AVAILABLE/$URL.conf
+	rm $ENABLED/$URL.conf
+	rm $AVAILABLE/$URL.conf
 	echo "Removed $URL.conf"
 	splice_from_root_www "$URL";
 	splice_dev_from_root_www "$DEV";
@@ -254,7 +260,7 @@ full_suite(){
 	echo "Finishing Up ..."
 	echo "Success!  The $URL server block is now running!
 Remember to run the below command for SSL certification:
-sudo certbot -d $URL -d www.$URL -d dev.$URL"
+certbot -d $URL -d www.$URL -d dev.$URL"
 }
 full_suite_certbot(){
 	full_suite;
@@ -263,7 +269,6 @@ full_suite_certbot(){
 	echo "Finishing Up ..."
 	echo "Success!  The $URL server block is now running with an SSL certificate!";
 }
-
 ### LOGIC ###
 case "$2" in
 	-A) create_www;create_assets_dirs ;;
@@ -274,12 +279,12 @@ case "$2" in
 	-FC) full_suite_certbot ;;
 	-H) echo "Creating .htaccess for $URL ...";create_htaccess ;;
 	-I) create_index ;;
+	-P) set_permissions ;;
 	-R) remove_website $URL;;
 	-SSL) certbot ;;
 	-V) create_virtual_host ;;
-	*)
-		echo "Usage: sudo bash mjolnir <URL> <Options>
-[-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R/-D] Remove Site"; #TO-DO: Flesh This Out
+	*) echo "Usage: bash mjolnir <URL> <Options>
+[-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R] Remove Site | [-D] Create Dev Site"; #TO-DO: Flesh This Out
 	exit;;
 esac
 exit 0		#Posterity
