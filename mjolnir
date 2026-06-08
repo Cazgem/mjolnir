@@ -123,15 +123,26 @@ self_update_from_git() {
 	fi
 
 	echo "Updating mjolnir from git repo: $repo_root"
-	if ! run_cmd git -C "$repo_root" pull --ff-only; then
+	local pull_output
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		run_cmd git -C "$repo_root" pull --ff-only
+		echo "[DRYRUN] install -m 755 <script> $target"
+		return 0
+	fi
+	pull_output="$(git -C "$repo_root" pull --ff-only 2>&1)" || {
 		warn "Git pull failed; falling back to public source update"
 		self_update_from_url
+		return 0
+	}
+	echo "$pull_output"
+	if [[ "$pull_output" == *"Already up to date"* ]]; then
+		echo "mjolnir is already up to date."
 		return 0
 	fi
 
 	src="$repo_root/mjolnir"
 	[[ -f "$src" ]] || die "Expected script not found at $src"
-	run_cmd install -m 755 "$src" "$target"
+	install -m 755 "$src" "$target"
 	echo "Updated mjolnir at $target"
 }
 
@@ -181,6 +192,11 @@ self_update_from_url() {
 	fi
 
 	bash -n "$tmp" || { rm -f "$tmp"; die "Downloaded update failed syntax check"; }
+	if [[ -f "$target" ]] && cmp -s "$tmp" "$target"; then
+		rm -f "$tmp"
+		echo "mjolnir is already up to date."
+		return 0
+	fi
 	install -m 755 "$tmp" "$target"
 	rm -f "$tmp"
 	echo "Updated mjolnir at $target (public source: $update_url)"
