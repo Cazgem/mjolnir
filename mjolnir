@@ -85,6 +85,18 @@ splice_dev_from_root_www(){
 </VirtualHost>" >> $AVAILABLE/$1.conf
 	sudo a2ensite $1.conf
 }
+create_subdomain(){
+	echo "#### $URL ####
+<VirtualHost *:80>
+	ServerName $2.$URL
+	DocumentRoot /srv/www/$URL/dev
+	ServerAdmin $EMAIL
+	ServerAlias $2.$URL
+	ErrorLog /srv/www/$URL/error.log
+	CustomLog /srv/www/$URL/access.log combined
+</VirtualHost>" >> $AVAILABLE/$1.conf
+	sudo a2ensite $1.conf
+}
 
 restart_apache(){
 	echo ""
@@ -268,6 +280,11 @@ full_suite_certbot(){
 	certbot;
 	echo "Finishing Up ..."
 	echo "Success!  The $URL server block is now running with an SSL certificate!";
+}
+set_permissions(){
+	echo -e "${YELLOW}Navigating to $URL ${NC}";
+	cd "$WEBDIR/$URL";
+	chmod -R 777 "$WEBDIR/$URL";
 }
 ### LOGIC ###
 case "$2" in

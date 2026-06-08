@@ -3,24 +3,26 @@
 #######################
 #					  #
 #	  DIVISI LABS	  #
-#	MJOLNIR v 1.0.3	  #
+#  Installer v 1.0.1  #
 #					  #
 #######################
 #
-# This script installs the mjolnir script for website creation.
+# This script installs the designated script.
 # Created by Cazgem from https://cazgem.com
-# Feel free to modify it and Contribute at https://github.com/Cazgem/mjolnir
+# Feel free to modify it and Contribute at https://github.com/Cazgem/install.sh
 #
 # EXAMPLE USAGE
-# sudo bash /path/to/mjolnir/installer.sh
+# sudo bash /path/to/SCRIPTNAME/installer.sh
 #
 #
-cp mjolnir /usr/bin
+SCRIPTNAME="mjolnir"
+
+cp $SCRIPTNAME /usr/bin
 cd /usr/bin
-chmod +x mjolnir
+chmod +x $SCRIPTNAME
 cd ~
 
-mkdir /etc/mjolnir
-mkdir /etc/mjolnir/logs
+mkdir /etc/$SCRIPTNAME
+mkdir /etc/$SCRIPTNAME/logs
 
 printf "Installation Completed\n"

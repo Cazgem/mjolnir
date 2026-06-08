@@ -1,0 +1,90 @@
+#!/bin/bash
+#
+#######################
+#					  #
+#	  DIVISI LABS	  #
+#	MJOLNIR v 1.0.3	  #
+#					  #
+#######################
+#
+# This script is used for create virtual hosts on Apache2.
+# Created by Cazgem from https://cazgem.com
+# Feel free to modify it and Contribute at https://github.com/Cazgem/mjolnir
+#
+# EXAMPLE USAGE
+# sudo mjolnir cazgem.com -FC
+#
+#
+#
+### PARAMETERS ###
+VERSION="2.0.1"
+WEBDIR="/srv/www" 							# This Should be the location where you want your website directories to live
+APACHE="/etc/apache2"						# This is your Apache2 Directory (purely  future-proofing)
+AVAILABLE="$APACHE/sites-available"
+ENABLED="$APACHE/sites-enabled"
+EMAIL="webmaster@divisilabs.com"			# Master Administrator Email for your LAMP stack (will add option in the future for customizing this per site)
+URL=$1										# example.com, mysite.org, derp.net - you get the idea.....
+DEV="dev.$URL"								# Dev version of the site
+WEBSITENAME=${URL%.*}
+EXT=${URL#*.}
+LOGSDIR="/etc/mjolnir/logs"
+_DATE=`date +%m-%d-%Y`
+Name="world"
+### PARAMETERS ###
+#
+### FUNCTIONS ###
+Help()
+{
+   # Display Help
+   echo "Usage: bash mjolnir <URL> <Options>
+[-a] assets dirs | [-f] full | [-c] certbot SSL certificate | [-fc] full w/ certbot SSL certificate | [-i] Create Index | [-r] Remove Site | [-d] Create Dev Site"; #TO-DO: Flesh This Out
+}
+### FUNCTIONS ###
+#
+### LOGIC ###
+echo "===== Mjolnir v$VERSION ====="
+while getopts ":acde:fHh:iprtv" option; do
+    case "$option" in
+        a) echo "===== Create Asset Directories ====="
+        # create_www;create_assets_dirs
+        ;;
+        c) echo "===== Run Certbot ====="
+        # certbot
+        ;;
+        d) echo "===== Create Devsite ====="
+        # create_devsite;complete_job
+        ;;
+        e) echo "EchoTest = $OPTARG"
+        ;;
+        f) echo "===== Full Suite ====="
+        # full_suite
+        ;;
+        h) echo "Creating .htaccess for $OPTARG ...";
+        # create_htaccess
+        ;;
+        i) echo "===== Create Index ====="
+        # create_index
+        ;;
+        p) echo "===== Set Permissions ====="
+        # set_permissions
+        ;;
+        r) echo "===== Remove Website ====="
+        # remove_website $URL
+        ;;
+        t) echo "===== Run Configuration Test ====="
+        # configtest
+        ;;
+        v) echo "===== Create VirtualHost ====="
+        # create_virtual_host
+        ;;
+        H) echo "===== Help Menu ====="
+        Help
+        ;;
+     \?) # Invalid option
+         echo "Invalid option -$OPTARG" >&2
+         ;;
+    esac
+done
+echo "===================="
+### LOGIC ###
+exit 0		#Posterity
