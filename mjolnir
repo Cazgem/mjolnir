@@ -1,307 +1,434 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 #######################
-#					  #
-#	  DIVISI LABS	  #
-#	MJOLNIR v 1.0.3	  #
-#					  #
+#                     #
+#    DIVISI LABS      #
+#  MJOLNIR v 1.1.4    #
+#                     #
 #######################
 #
-# This script is used for create virtual hosts on Apache2.
-# Created by Cazgem from https://cazgem.com
-# Feel free to modify it and Contribute at https://github.com/Cazgem/mjolnir
-#
-# EXAMPLE USAGE
-# sudo mjolnir cazgem.com -FC
-#
-#
-#
+# This script creates and manages Apache2 virtual hosts.
+
+set -uo pipefail
+
 ### PARAMETERS ###
-WEBDIR="/srv/www" 							# This Should be the location where you want your website directories to live
-APACHE="/etc/apache2"						# This is your Apache2 Directory (purely  future-proofing)
+WEBDIR="/srv/www"
+APACHE="/etc/apache2"
 AVAILABLE="$APACHE/sites-available"
 ENABLED="$APACHE/sites-enabled"
-EMAIL="webmaster@divisilabs.com"			# Master Administrator Email for your LAMP stack (will add option in the future for customizing this per site)
-URL=$1										# example.com, mysite.org, derp.net - you get the idea.....
-DEV="dev.$URL"								# Dev version of the site
-WEBSITENAME=${URL%.*}
-EXT=${URL#*.}
+EMAIL="webmaster@divisilabs.com"
+URL="${1:-}"
+ACTION="${2:-}"
+DEV="dev.$URL"
+WEBSITENAME="${URL%.*}"
+EXT="${URL#*.}"
 LOGSDIR="/etc/mjolnir/logs"
-_DATE=`date +%m-%d-%Y`
-### FUNCTIONS ###
-create_www(){
-	sudo mkdir -p $WEBDIR/$URL/html
-	sudo mkdir -p $WEBDIR/$URL/dev
-	sudo mkdir -p $WEBDIR/errors/$URL
-	sudo mkdir -p $WEBDIR/access/$URL
+RUN_AS_USER="${SUDO_USER:-$USER}"
+DRYRUN=0
+SELF_INSTALL=0
 
-	sudo chown -R $USER:$USER $WEBDIR/$URL/html
-	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
+if [[ "${2:-}" == "-dryrun" || "${2:-}" == "--dry-run" ]]; then
+	DRYRUN=1
+	ACTION="${3:-}"
+elif [[ "${3:-}" == "-dryrun" || "${3:-}" == "--dry-run" ]]; then
+	DRYRUN=1
+	ACTION="${2:-}"
+fi
 
-	sudo chmod -R 755 $WEBDIR/$URL
+if [[ "$URL" == "-" && -z "${2:-}" ]]; then
+	SELF_INSTALL=1
+fi
+
+usage() {
+	cat <<'EOF'
+Usage: mjolnir <domain.tld> <option>
+[-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R] Remove Site | [-D] Create Dev Site | [-V] Rewrite VirtualHost | [-configtest] Apache config test
+Optional: add -dryrun (or --dry-run) before/after option to preview changes without applying.
+Self-install: sudo bash mjolnir -
+EOF
 }
 
-create_wwwdev(){
-	sudo mkdir -p $WEBDIR/$URL/dev
-	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
-
-	sudo chmod -R 755 $WEBDIR/$URL
-}
-create_index(){
-	echo "<?php include ('/srv/lib/polyphony/init.php');?>" >> $WEBDIR/$URL/html/index.php
+warn() {
+	echo "[WARN] $*" >&2
 }
 
-splice_from_root_www(){
-	echo "#### $URL ####
+die() {
+	echo "[ERROR] $*" >&2
+	exit 1
+}
+
+run_cmd() {
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] $*"
+		return 0
+	fi
+	"$@"
+}
+
+self_install() {
+	local src target
+	src="$(readlink -f "${BASH_SOURCE[0]}")"
+	target="/usr/bin/mjolnir"
+
+	if [[ ! -f "$src" ]]; then
+		die "Unable to locate script source for install: $src"
+	fi
+
+	if [[ -x "$target" ]]; then
+		echo "mjolnir is already installed at $target"
+		return 0
+	fi
+
+	run_cmd install -m 755 "$src" "$target"
+	echo "Installed mjolnir to $target"
+}
+
+require_root() {
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		warn "Dry-run mode enabled: skipping root requirement."
+		return 0
+	fi
+	if [[ "${EUID}" -ne 0 ]]; then
+		die "Run as root (for example: sudo mjolnir example.com -F)."
+	fi
+}
+
+validate_domain() {
+	[[ -n "$URL" ]] || die "Domain is required."
+	if [[ ! "$URL" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}$ ]]; then
+		die "Invalid domain: '$URL'"
+	fi
+}
+
+validate_environment() {
+	[[ -d "$AVAILABLE" ]] || die "Missing Apache sites-available directory: $AVAILABLE"
+	[[ -d "$ENABLED" ]] || die "Missing Apache sites-enabled directory: $ENABLED"
+	run_cmd mkdir -p "$LOGSDIR"
+}
+
+safe_rm_path() {
+	local target="$1"
+	if [[ -e "$target" || -L "$target" ]]; then
+		run_cmd rm -rf -- "$target"
+		echo "Removed $target"
+	fi
+}
+
+create_www() {
+	run_cmd mkdir -p "$WEBDIR/$URL/html"
+	run_cmd mkdir -p "$WEBDIR/$URL/dev"
+	run_cmd mkdir -p "$WEBDIR/errors/$URL"
+	run_cmd mkdir -p "$WEBDIR/access/$URL"
+
+	run_cmd chown -R "$RUN_AS_USER:$RUN_AS_USER" "$WEBDIR/$URL/html"
+	run_cmd chown -R "$RUN_AS_USER:$RUN_AS_USER" "$WEBDIR/$URL/dev"
+	run_cmd chmod -R 755 "$WEBDIR/$URL"
+}
+
+create_wwwdev() {
+	run_cmd mkdir -p "$WEBDIR/$URL/dev"
+	run_cmd chown -R "$RUN_AS_USER:$RUN_AS_USER" "$WEBDIR/$URL/dev"
+	run_cmd chmod -R 755 "$WEBDIR/$URL"
+}
+
+create_index() {
+	run_cmd mkdir -p "$WEBDIR/$URL/html"
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] write $WEBDIR/$URL/html/index.php"
+	else
+		cat > "$WEBDIR/$URL/html/index.php" <<'EOF'
+<?php include ('/srv/lib/polyphony/init.php');?>
+EOF
+	fi
+}
+
+write_main_vhost() {
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] write $AVAILABLE/$URL.conf"
+		return 0
+	fi
+	cat > "$AVAILABLE/$URL.conf" <<EOF
+#### $URL ####
 <VirtualHost *:80>
-	ServerName $1
-	DocumentRoot $WEBDIR/$1/html
-	ServerAdmin $EMAIL
-	ServerAlias $1
-	ErrorLog $WEBDIR/$1/error.log
-	CustomLog $WEBDIR/$1/access.log combined
+		ServerName $URL
+		DocumentRoot $WEBDIR/$URL/html
+		ServerAdmin $EMAIL
+		ServerAlias $URL
+		ErrorLog $WEBDIR/$URL/error.log
+		CustomLog $WEBDIR/$URL/access.log combined
 </VirtualHost>
 
 <VirtualHost *:80>
-	DocumentRoot $WEBDIR/$1/html
-	ServerAdmin $EMAIL
-	ServerName $1
-	ServerAlias *.$1
-	ErrorLog $WEBDIR/$1/error.log
-	CustomLog $WEBDIR/$1/access.log combined
-</VirtualHost>" >> $AVAILABLE/$1.conf
-	a2ensite $1.conf
+		DocumentRoot $WEBDIR/$URL/html
+		ServerAdmin $EMAIL
+		ServerName $URL
+		ServerAlias *.$URL
+		ErrorLog $WEBDIR/$URL/error.log
+		CustomLog $WEBDIR/$URL/access.log combined
+</VirtualHost>
+EOF
 }
 
-splice_dev_from_root_www(){
-	echo "#### $URL ####
+write_dev_vhost() {
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] write $AVAILABLE/$DEV.conf"
+		return 0
+	fi
+	cat > "$AVAILABLE/$DEV.conf" <<EOF
+#### $DEV ####
 <VirtualHost *:80>
-	ServerName dev.$URL
-	DocumentRoot /srv/www/$URL/dev
-	ServerAdmin $EMAIL
-	ServerAlias dev.$URL
-	ErrorLog /srv/www/$URL/error.log
-	CustomLog /srv/www/$URL/access.log combined
-</VirtualHost>" >> $AVAILABLE/$1.conf
-	sudo a2ensite $1.conf
-}
-create_subdomain(){
-	echo "#### $URL ####
-<VirtualHost *:80>
-	ServerName $2.$URL
-	DocumentRoot /srv/www/$URL/dev
-	ServerAdmin $EMAIL
-	ServerAlias $2.$URL
-	ErrorLog /srv/www/$URL/error.log
-	CustomLog /srv/www/$URL/access.log combined
-</VirtualHost>" >> $AVAILABLE/$1.conf
-	sudo a2ensite $1.conf
+		ServerName $DEV
+		DocumentRoot $WEBDIR/$URL/dev
+		ServerAdmin $EMAIL
+		ServerAlias $DEV
+		ErrorLog $WEBDIR/$URL/error.log
+		CustomLog $WEBDIR/$URL/access.log combined
+</VirtualHost>
+EOF
 }
 
-restart_apache(){
-	echo ""
+enable_sites() {
+	run_cmd a2ensite "$URL.conf"
+	run_cmd a2ensite "$DEV.conf"
+}
+
+restart_apache() {
 	echo "------ Stability Test ------"
-	sudo apache2ctl configtest
-	echo ""
-	echo "Restarting Apache2....."
-	sudo systemctl restart apache2
+	run_cmd apache2ctl configtest || die "Apache config test failed"
+	echo "Restarting Apache2..."
+	run_cmd systemctl restart apache2
 }
 
-configtest(){
-	var=$(apache2ctl configtest 2>&1)
-	echo $var
+configtest() {
+	run_cmd apache2ctl configtest
 }
 
-create_htaccess(){
-	echo "
+create_htaccess() {
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] write $WEBDIR/$URL/html/.htaccess"
+		return 0
+	fi
+	cat > "$WEBDIR/$URL/html/.htaccess" <<EOF
 #Force non.www:
 RewriteEngine on
 RewriteCond %{HTTP_HOST} ^www\.$WEBSITENAME\.$EXT [NC]
-RewriteRule ^(.*)$ https://$URL/$1 [L,R=301]
+RewriteRule ^(.*)$ https://$URL/\$1 [L,R=301]
 
 Options -MultiViews
 <IfModule mod_rewrite.c>
-	#polyphony rewrite
-	RewriteEngine On
-	RewriteBase /
-	RewriteCond %{REQUEST_FILENAME} !-f
-	RewriteCond %{REQUEST_FILENAME} !-d
-	RewriteRule . /index.php [L,NC,QSA]
-</IfModule>" >> $WEBDIR/$URL/html/.htaccess
+		# polyphony rewrite
+		RewriteEngine On
+		RewriteBase /
+		RewriteCond %{REQUEST_FILENAME} !-f
+		RewriteCond %{REQUEST_FILENAME} !-d
+		RewriteRule . /index.php [L,NC,QSA]
+</IfModule>
+EOF
+}
+
+create_htaccess_dev() {
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] write $WEBDIR/$URL/dev/.htaccess"
+		return 0
+	fi
+	cat > "$WEBDIR/$URL/dev/.htaccess" <<EOF
+#Force non.www:
+RewriteEngine on
+RewriteCond %{HTTP_HOST} ^www\.dev\.$WEBSITENAME\.$EXT [NC]
+RewriteRule ^(.*)$ https://$DEV/\$1 [L,R=301]
+
+Options -MultiViews
+<IfModule mod_rewrite.c>
+		# polyphony rewrite
+		RewriteEngine On
+		RewriteBase /
+		RewriteCond %{REQUEST_FILENAME} !-f
+		RewriteCond %{REQUEST_FILENAME} !-d
+		RewriteRule . /index.php [L,NC,QSA]
+</IfModule>
+EOF
 }
 
 set_permissions() {
-	
-
-	sudo chown -R $USER:$USER $WEBDIR/$URL/html
-	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
-
-	sudo chmod -R 755 $WEBDIR/$URL
-
-	sudo chmod -R 755 $WEBDIR/$URL
-	
-}
-create_htaccess_dev(){
-	echo "
-#Force non.www:
-RewriteEngine on
-RewriteCond %{HTTP_HOST} ^www\.dev.$WEBSITENAME\.$EXT [NC]
-RewriteRule ^(.*)$ https://dev.$URL/$1 [L,R=301]
-
-Options -MultiViews
-<IfModule mod_rewrite.c>
-	#polyphony rewrite
-	RewriteEngine On
-	RewriteBase /
-	RewriteCond %{REQUEST_FILENAME} !-f
-	RewriteCond %{REQUEST_FILENAME} !-d
-	RewriteRule . /index.php [L,NC,QSA]
-</IfModule>" >> $WEBDIR/$URL/dev/.htaccess
+	run_cmd chown -R "$RUN_AS_USER:$RUN_AS_USER" "$WEBDIR/$URL/html" "$WEBDIR/$URL/dev"
+	run_cmd chmod -R 755 "$WEBDIR/$URL"
 }
 
-create_assets_dirs(){
-	mkdir $WEBDIR/$URL/html/assets $WEBDIR/$URL/html/assets/css $WEBDIR/$URL/html/assets/docs $WEBDIR/$URL/html/assets/fonts $WEBDIR/$URL/html/assets/includes $WEBDIR/$URL/html/assets/js $WEBDIR/$URL/html/assets/pics $WEBDIR/$URL/html/assets/scripts $WEBDIR/$URL/html/assets/templates
+create_assets_dirs() {
+	run_cmd mkdir -p \
+		"$WEBDIR/$URL/html/assets/css" \
+		"$WEBDIR/$URL/html/assets/docs" \
+		"$WEBDIR/$URL/html/assets/fonts" \
+		"$WEBDIR/$URL/html/assets/includes" \
+		"$WEBDIR/$URL/html/assets/js" \
+		"$WEBDIR/$URL/html/assets/pics" \
+		"$WEBDIR/$URL/html/assets/scripts" \
+		"$WEBDIR/$URL/html/assets/templates"
 }
 
-finish_work(){
-	echo "Success!  The $URL server block is now running!"
-	echo "Remember to run the below command for SSL certification:"
-	echo "certbot -d $URL -d www.$URL -d dev.$URL"
-}
-certbot(){
-	echo "
-	Getting SSL Certificate via Certbot"
-	sudo certbot -d $URL -d www.$URL -d $DEV 
-}
-certbot_dev(){
-	echo "
-	Getting SSL Certificate via Certbot"
-	sudo certbot -d $DEV 
-}
-create_dev(){
-	cp -r $WEBDIR/$URL/html/* $WEBDIR/$URL/dev
-}
-remove_www(){
-	rm -rf $WEBDIR/$URL/
-	echo "Removed $URL directory"
+certbot_main() {
+	echo "Getting SSL certificate via Certbot"
+	run_cmd certbot -d "$URL" -d "www.$URL" -d "$DEV"
 }
 
-remove_conf(){
-	rm -rf $ENABLED/$URL.conf
-	rm -rf $AVAILABLE/$URL.conf
-	echo "Removed $URL.conf"
-	rm -rf $ENABLED/$DEV.conf
-	rm -rf $AVAILABLE/$DEV.conf
-	echo "Removed $DEV.conf"
-	rm -rf $ENABLED/$URL-le-ssl.conf
-	rm -rf $AVAILABLE/$URL-le-ssl.conf
-	echo "Removed $URL-le-ssl.conf"
-	rm -rf $ENABLED/$DEV-le-ssl.conf
-	rm -rf $AVAILABLE/$DEV-le-ssl.conf
-	echo "Removed $DEV-le-ssl.conf"
+certbot_dev() {
+	echo "Getting SSL certificate via Certbot"
+	run_cmd certbot -d "$DEV"
 }
 
-disable_site(){
-	echo "Disabling Website....."
-	a2dissite $URL
-	a2dissite $DEV
+create_dev() {
+	run_cmd mkdir -p "$WEBDIR/$URL/dev"
+	run_cmd cp -a "$WEBDIR/$URL/html/." "$WEBDIR/$URL/dev/"
 }
 
-finish_removal(){
-	echo "Success!  The $URL server block is now removed!"
+remove_www() {
+	safe_rm_path "$WEBDIR/$URL"
 }
-create_devsite(){
-	echo "Creating Dev Directory..."
+
+remove_conf() {
+	safe_rm_path "$ENABLED/$URL.conf"
+	safe_rm_path "$AVAILABLE/$URL.conf"
+	safe_rm_path "$ENABLED/$DEV.conf"
+	safe_rm_path "$AVAILABLE/$DEV.conf"
+	safe_rm_path "$ENABLED/$URL-le-ssl.conf"
+	safe_rm_path "$AVAILABLE/$URL-le-ssl.conf"
+	safe_rm_path "$ENABLED/$DEV-le-ssl.conf"
+	safe_rm_path "$AVAILABLE/$DEV-le-ssl.conf"
+}
+
+disable_site() {
+	echo "Disabling website..."
+	run_cmd a2dissite "$URL.conf" >/dev/null 2>&1 || true
+	run_cmd a2dissite "$DEV.conf" >/dev/null 2>&1 || true
+}
+
+finish_removal() {
+	echo "Success: $URL server blocks removed."
+}
+
+create_devsite() {
+	echo "Creating dev directory..."
 	create_wwwdev
 	create_dev
-	splice_dev_from_root_www "dev.$URL"
+	write_dev_vhost
+	run_cmd a2ensite "$DEV.conf"
 	create_htaccess_dev
-	sudo chown -R $USER:$USER $WEBDIR/$URL/dev
-
-	sudo chmod -R 755 $WEBDIR/$URL
+	run_cmd chown -R "$RUN_AS_USER:$RUN_AS_USER" "$WEBDIR/$URL/dev"
+	run_cmd chmod -R 755 "$WEBDIR/$URL"
 	certbot_dev
 }
-complete_job(){
-	echo "Job Done!"
-}
-remove_website(){
-	read -p "Are You Sure You Want to Delete $1? [Y/N]" confirm
-	case "$confirm" in
-	Y | y)
-	echo "Removing $1 ...";
-	disable_site;
-	restart_apache;
-	remove_www;
-	remove_conf;
-	finish_removal;
-	;;
-	N | n)
-	;;
-	*)
-	remove_website $1;
-	;;
-	esac
 
+complete_job() {
+	echo "Job done."
 }
-create_virtual_host(){
-	echo "Creating Virtual Hosts..."
-	rm $ENABLED/$URL.conf
-	rm $AVAILABLE/$URL.conf
-	echo "Removed $URL.conf"
-	splice_from_root_www "$URL";
-	splice_dev_from_root_www "$DEV";
-	disable_site;
-	complete_job;
+
+remove_website() {
+	local domain="$1"
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] remove website flow for $domain"
+		disable_site
+		restart_apache
+		remove_www
+		remove_conf
+		finish_removal
+		return 0
+	fi
+	read -r -p "Are you sure you want to delete $domain? [Y/N] " confirm
+	case "$confirm" in
+		Y|y)
+			echo "Removing $domain ..."
+			disable_site
+			restart_apache
+			remove_www
+			remove_conf
+			finish_removal
+			;;
+		N|n)
+			echo "Cancelled."
+			;;
+		*)
+			remove_website "$domain"
+			;;
+	esac
 }
-full_suite(){
-	echo "--------- Creating Website $URL ---------"
-	create_www;
+
+create_virtual_host() {
+	echo "Creating virtual hosts..."
+	safe_rm_path "$ENABLED/$URL.conf"
+	safe_rm_path "$AVAILABLE/$URL.conf"
+	safe_rm_path "$ENABLED/$DEV.conf"
+	safe_rm_path "$AVAILABLE/$DEV.conf"
+
+	write_main_vhost
+	write_dev_vhost
+	enable_sites
+	restart_apache
+	complete_job
+}
+
+full_suite() {
+	echo "--------- Creating website $URL ---------"
+	create_www
 	echo "Creating $URL homepage ..."
-	create_index;
-	echo "Splicing $URL from root www ..."
-	splice_from_root_www "$URL";
-	splice_dev_from_root_www "$DEV";
-	restart_apache;
-	echo "Creating Assets Directories ..."
-	create_assets_dirs;
+	create_index
+	echo "Writing virtual hosts ..."
+	write_main_vhost
+	write_dev_vhost
+	enable_sites
+	restart_apache
+	echo "Creating assets directories ..."
+	create_assets_dirs
 	echo "Initializing .htaccess ..."
-	create_htaccess;
-	create_htaccess_dev;
-	echo "Creating Dev ..."
-	create_dev;
-	echo "Finishing Up ..."
-	echo "Success!  The $URL server block is now running!
-Remember to run the below command for SSL certification:
-certbot -d $URL -d www.$URL -d dev.$URL"
+	create_htaccess
+	create_htaccess_dev
+	echo "Creating dev ..."
+	create_dev
+	echo "Finishing up ..."
+	echo "Success: $URL server blocks are running."
+	echo "To issue certs manually: certbot -d $URL -d www.$URL -d $DEV"
 }
-full_suite_certbot(){
-	full_suite;
+
+full_suite_certbot() {
+	full_suite
 	echo "Running Certbot ..."
-	certbot;
-	echo "Finishing Up ..."
-	echo "Success!  The $URL server block is now running with an SSL certificate!";
+	certbot_main
+	echo "Success: $URL server blocks are running with SSL certificates."
 }
-set_permissions(){
-	echo -e "${YELLOW}Navigating to $URL ${NC}";
-	cd "$WEBDIR/$URL";
-	chmod -R 777 "$WEBDIR/$URL";
-}
+
 ### LOGIC ###
-case "$2" in
-	-A) create_www;create_assets_dirs ;;
-	-C) certbot ;;
-	-configtest) configtest ;;
-	-D) create_devsite;complete_job ;;
-	-F) full_suite ;;
-	-FC) full_suite_certbot ;;
-	-H) echo "Creating .htaccess for $URL ...";create_htaccess ;;
-	-I) create_index ;;
-	-P) set_permissions ;;
-	-R) remove_website $URL;;
-	-SSL) certbot ;;
-	-V) create_virtual_host ;;
-	*) echo "Usage: bash mjolnir <URL> <Options>
-[-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R] Remove Site | [-D] Create Dev Site"; #TO-DO: Flesh This Out
-	exit;;
+require_root
+
+if [[ "$SELF_INSTALL" -eq 1 ]]; then
+	self_install
+	exit 0
+fi
+
+validate_environment
+
+case "$ACTION" in
+	-configtest)
+		configtest
+		;;
+	-A|-C|-D|-F|-FC|-H|-I|-P|-R|-SSL|-V)
+		validate_domain
+		case "$ACTION" in
+			-A) create_www; create_assets_dirs ;;
+			-C) certbot_main ;;
+			-D) create_devsite; complete_job ;;
+			-F) full_suite ;;
+			-FC) full_suite_certbot ;;
+			-H) echo "Creating .htaccess for $URL ..."; create_htaccess ;;
+			-I) create_index ;;
+			-P) set_permissions ;;
+			-R) remove_website "$URL" ;;
+			-SSL) certbot_main ;;
+			-V) create_virtual_host ;;
+		esac
+		;;
+	*)
+		usage
+		exit 1
+		;;
 esac
-exit 0		#Posterity
+
+exit 0

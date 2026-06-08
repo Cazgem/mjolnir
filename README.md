@@ -22,6 +22,12 @@ If you wish to use secure ssl (https), make sure to install certbot as this scri
 
 ```javascript
 sudo mjolnir <domainname> [Options]
+
+# preview-only mode
+sudo mjolnir <domainname> [Options] -dryrun
+
+# self-install to /usr/bin/mjolnir (if not already installed)
+sudo bash mjolnir -
 ```
 
 ## USE
@@ -70,4 +76,62 @@ Overwrites the Virtual Host file for the website given with the newest, updated 
 sudo bash mjolnir example.com -V
 ```
 
+### Dry Run (No Changes Applied)
+
+Preview what Mjolnir would do without writing files, restarting Apache, or running certbot.
+
+```bash
+sudo mjolnir example.com -F -dryrun
+
+# also works with dryrun before action
+sudo mjolnir example.com -dryrun -F
+```
+
+### Self Install
+
+Installs `mjolnir` to `/usr/bin/mjolnir` if it is not already installed.
+
+```bash
+sudo bash mjolnir -
+```
+
 Developed by Cazgem (https://cazgem.com) for internal use as part of Divisi Labs and Polyphony (https://divisilabs.com/getpolyphony).
+
+## Multi-Server Pattern (Live + Dev)
+
+If your live and dev servers use the same folder layout (for example `/srv/www/<domain>/html` and `/srv/www/<domain>/dev`), run Mjolnir independently on each machine.
+
+### Recommended Setup
+
+1. Install Apache and this script on both servers.
+2. Keep `WEBDIR` and Apache paths identical on both hosts.
+3. Point DNS to each machine's public IP as needed:
+	- `example.com` and `www.example.com` -> live server IP
+	- `dev.example.com` -> dev server IP
+4. Run Mjolnir on each host only for the domains that host serves.
+
+### Typical Commands
+
+On live:
+
+```bash
+sudo mjolnir example.com -F
+```
+
+On dev:
+
+```bash
+sudo mjolnir example.com -D
+```
+
+If certbot is installed on each server, issue certs on each host after DNS is correct:
+
+```bash
+sudo mjolnir example.com -C
+```
+
+### Operational Notes
+
+- This script writes local Apache config files only on the machine where it is run.
+- The same domain can exist on both hosts as long as DNS records direct traffic to the intended server.
+- Use `sudo mjolnir anything -configtest` to validate Apache config syntax before restart-level changes.
