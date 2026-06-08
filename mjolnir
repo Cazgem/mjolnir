@@ -24,8 +24,11 @@ WEBSITENAME="${URL%.*}"
 EXT="${URL#*.}"
 LOGSDIR="/etc/mjolnir/logs"
 RUN_AS_USER="${SUDO_USER:-$USER}"
+PUBLIC_REPO_URL="https://github.com/Cazgem/mjolnir"
+PUBLIC_RAW_URL="https://raw.githubusercontent.com/Cazgem/mjolnir/main/mjolnir"
 DRYRUN=0
 SELF_INSTALL=0
+SELF_UPDATE=0
 
 if [[ "${2:-}" == "-dryrun" || "${2:-}" == "--dry-run" ]]; then
 	DRYRUN=1
@@ -39,12 +42,18 @@ if [[ "$URL" == "-" && -z "${2:-}" ]]; then
 	SELF_INSTALL=1
 fi
 
+if [[ "$URL" == "--self-update" ]]; then
+	SELF_UPDATE=1
+fi
+
 usage() {
 	cat <<'EOF'
 Usage: mjolnir <domain.tld> <option>
 [-A] assets dirs | [-F] full | [-SSL/-C] certbot SSL certificate | [-FC] full w/ certbot SSL certificate | [-I] Create Index | [-R] Remove Site | [-D] Create Dev Site | [-V] Rewrite VirtualHost | [-configtest] Apache config test
 Optional: add -dryrun (or --dry-run) before/after option to preview changes without applying.
 Self-install: sudo bash mjolnir -
+Self-update from git checkout: sudo mjolnir --self-update
+Self-update fallback from public repo: sudo mjolnir --self-update
 EOF
 }
 
@@ -66,21 +75,91 @@ run_cmd() {
 }
 
 self_install() {
-	local src target
+	local src target existed
 	src="$(readlink -f "${BASH_SOURCE[0]}")"
 	target="/usr/bin/mjolnir"
+	existed=0
 
 	if [[ ! -f "$src" ]]; then
 		die "Unable to locate script source for install: $src"
 	fi
 
-	if [[ -x "$target" ]]; then
-		echo "mjolnir is already installed at $target"
-		return 0
+	if [[ -e "$target" ]]; then
+		existed=1
 	fi
 
 	run_cmd install -m 755 "$src" "$target"
-	echo "Installed mjolnir to $target"
+	if [[ "$existed" -eq 1 ]]; then
+		echo "Reinstalled mjolnir to $target"
+	else
+		echo "Installed mjolnir to $target"
+	fi
+}
+
+self_update_from_git() {
+	local src dir repo_root target
+	src="$(readlink -f "${BASH_SOURCE[0]}")"
+	dir="$(dirname "$src")"
+	target="/usr/bin/mjolnir"
+
+	if ! command -v git >/dev/null 2>&1; then
+		warn "git not found; falling back to public source update"
+		self_update_from_url
+		return 0
+	fi
+
+	repo_root="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
+	if [[ -z "$repo_root" ]]; then
+		warn "No git checkout detected for running script; falling back to public source update"
+		self_update_from_url
+		return 0
+	fi
+
+	if [[ "$DRYRUN" -ne 1 ]]; then
+		if [[ -n "$(git -C "$repo_root" status --porcelain)" ]]; then
+			die "Git checkout has local changes. Commit/stash first, then retry self-update."
+		fi
+	fi
+
+	echo "Updating mjolnir from git repo: $repo_root"
+	if ! run_cmd git -C "$repo_root" pull --ff-only; then
+		warn "Git pull failed; falling back to public source update"
+		self_update_from_url
+		return 0
+	fi
+
+	src="$repo_root/mjolnir"
+	[[ -f "$src" ]] || die "Expected script not found at $src"
+	run_cmd install -m 755 "$src" "$target"
+	echo "Updated mjolnir at $target"
+}
+
+self_update_from_url() {
+	local target update_url tmp
+	target="/usr/bin/mjolnir"
+	update_url="${MJOLNIR_UPDATE_URL:-$PUBLIC_RAW_URL}"
+
+	if [[ "$DRYRUN" -eq 1 ]]; then
+		echo "[DRYRUN] download $update_url"
+		echo "[DRYRUN] install -m 755 <downloaded-mjolnir> $target"
+		echo "Updated mjolnir at $target (dry-run, public source)"
+		return 0
+	fi
+
+	tmp="$(mktemp)"
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL "$update_url" -o "$tmp" || { rm -f "$tmp"; die "Failed to download update from $update_url"; }
+	elif command -v wget >/dev/null 2>&1; then
+		wget -qO "$tmp" "$update_url" || { rm -f "$tmp"; die "Failed to download update from $update_url"; }
+	else
+		rm -f "$tmp"
+		die "curl or wget is required for public-source self-update"
+	fi
+
+	bash -n "$tmp" || { rm -f "$tmp"; die "Downloaded update failed syntax check"; }
+	install -m 755 "$tmp" "$target"
+	rm -f "$tmp"
+	echo "Updated mjolnir at $target (public source)"
 }
 
 require_root() {
@@ -373,16 +452,16 @@ full_suite() {
 	create_index
 	echo "Writing virtual hosts ..."
 	write_main_vhost
-	write_dev_vhost
+	# write_dev_vhost
 	enable_sites
 	restart_apache
 	echo "Creating assets directories ..."
 	create_assets_dirs
 	echo "Initializing .htaccess ..."
 	create_htaccess
-	create_htaccess_dev
+	# create_htaccess_dev
 	echo "Creating dev ..."
-	create_dev
+	# create_dev
 	echo "Finishing up ..."
 	echo "Success: $URL server blocks are running."
 	echo "To issue certs manually: certbot -d $URL -d www.$URL -d $DEV"
@@ -400,6 +479,11 @@ require_root
 
 if [[ "$SELF_INSTALL" -eq 1 ]]; then
 	self_install
+	exit 0
+fi
+
+if [[ "$SELF_UPDATE" -eq 1 ]]; then
+	self_update_from_git
 	exit 0
 fi
 

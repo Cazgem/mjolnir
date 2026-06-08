@@ -26,8 +26,11 @@ sudo mjolnir <domainname> [Options]
 # preview-only mode
 sudo mjolnir <domainname> [Options] -dryrun
 
-# self-install to /usr/bin/mjolnir (if not already installed)
+# self-install to /usr/bin/mjolnir (overwrites existing)
 sudo bash mjolnir -
+
+# self-update from local git checkout, then refresh /usr/bin/mjolnir
+sudo mjolnir --self-update
 ```
 
 ## USE
@@ -89,11 +92,26 @@ sudo mjolnir example.com -dryrun -F
 
 ### Self Install
 
-Installs `mjolnir` to `/usr/bin/mjolnir` if it is not already installed.
+Installs `mjolnir` to `/usr/bin/mjolnir`, overwriting the existing binary/script.
 
 ```bash
 sudo bash mjolnir -
 ```
+
+### Self Update
+
+Updates from the current git checkout using a fast-forward pull, then reinstalls to `/usr/bin/mjolnir`.
+
+If no git checkout is detected (or git pull fails), it falls back to downloading from the public repo source.
+
+```bash
+sudo mjolnir --self-update
+```
+
+Notes:
+
+- Git mode protects local changes by blocking update when the checkout is dirty.
+- Fallback mode downloads from `https://github.com/Cazgem/mjolnir` public source and does not require git credentials.
 
 Developed by Cazgem (https://cazgem.com) for internal use as part of Divisi Labs and Polyphony (https://divisilabs.com/getpolyphony).
 
