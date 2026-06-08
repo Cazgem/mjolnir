@@ -3,7 +3,7 @@
 #######################
 #                     #
 #    DIVISI LABS      #
-#  MJOLNIR v 1.1.4    #
+#  MJOLNIR v 2.0.0    #
 #                     #
 #######################
 #
@@ -26,6 +26,7 @@ LOGSDIR="/etc/mjolnir/logs"
 RUN_AS_USER="${SUDO_USER:-$USER}"
 PUBLIC_REPO_URL="https://github.com/Cazgem/mjolnir"
 PUBLIC_RAW_URL="https://raw.githubusercontent.com/Cazgem/mjolnir/main/mjolnir"
+PUBLIC_RAW_URL_FALLBACK="https://raw.githubusercontent.com/Cazgem/mjolnir/master/mjolnir"
 DRYRUN=0
 SELF_INSTALL=0
 SELF_UPDATE=0
@@ -135,12 +136,20 @@ self_update_from_git() {
 }
 
 self_update_from_url() {
-	local target update_url tmp
+	local target update_url tmp fetched
+	local -a candidate_urls
 	target="/usr/bin/mjolnir"
 	update_url="${MJOLNIR_UPDATE_URL:-$PUBLIC_RAW_URL}"
+	fetched=0
+
+	if [[ -n "${MJOLNIR_UPDATE_URL:-}" ]]; then
+		candidate_urls=("$update_url")
+	else
+		candidate_urls=("$PUBLIC_RAW_URL" "$PUBLIC_RAW_URL_FALLBACK")
+	fi
 
 	if [[ "$DRYRUN" -eq 1 ]]; then
-		echo "[DRYRUN] download $update_url"
+		echo "[DRYRUN] try download from: ${candidate_urls[*]}"
 		echo "[DRYRUN] install -m 755 <downloaded-mjolnir> $target"
 		echo "Updated mjolnir at $target (dry-run, public source)"
 		return 0
@@ -148,18 +157,33 @@ self_update_from_url() {
 
 	tmp="$(mktemp)"
 	if command -v curl >/dev/null 2>&1; then
-		curl -fsSL "$update_url" -o "$tmp" || { rm -f "$tmp"; die "Failed to download update from $update_url"; }
+		for update_url in "${candidate_urls[@]}"; do
+			if curl -fsSL "$update_url" -o "$tmp"; then
+				fetched=1
+				break
+			fi
+		done
 	elif command -v wget >/dev/null 2>&1; then
-		wget -qO "$tmp" "$update_url" || { rm -f "$tmp"; die "Failed to download update from $update_url"; }
+		for update_url in "${candidate_urls[@]}"; do
+			if wget -qO "$tmp" "$update_url"; then
+				fetched=1
+				break
+			fi
+		done
 	else
 		rm -f "$tmp"
 		die "curl or wget is required for public-source self-update"
 	fi
 
+	if [[ "$fetched" -ne 1 ]]; then
+		rm -f "$tmp"
+		die "Failed to download update from any source: ${candidate_urls[*]}"
+	fi
+
 	bash -n "$tmp" || { rm -f "$tmp"; die "Downloaded update failed syntax check"; }
 	install -m 755 "$tmp" "$target"
 	rm -f "$tmp"
-	echo "Updated mjolnir at $target (public source)"
+	echo "Updated mjolnir at $target (public source: $update_url)"
 }
 
 require_root() {

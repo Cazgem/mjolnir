@@ -1,4 +1,4 @@
-# Mjolnir 1.0.3
+# Mjolnir 2.0.0
 
 ```javascript
 sudo bash mjolnir example.com -FC
@@ -112,6 +112,7 @@ Notes:
 
 - Git mode protects local changes by blocking update when the checkout is dirty.
 - Fallback mode downloads from `https://github.com/Cazgem/mjolnir` public source and does not require git credentials.
+- Fallback mode automatically tries both `main` and `master` raw branch URLs.
 
 Developed by Cazgem (https://cazgem.com) for internal use as part of Divisi Labs and Polyphony (https://divisilabs.com/getpolyphony).
 
